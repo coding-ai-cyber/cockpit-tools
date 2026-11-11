@@ -1,0 +1,48 @@
+name: "Build Windows Patched Exe"
+
+on:
+  push:
+    branches:
+      - "build/windows-exe"
+  workflow_dispatch:
+
+jobs:
+  build-windows-exe:
+    name: "Build Windows x64 Release"
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Node.js setup
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Rust setup
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build frontend dist
+        run: |
+          npm ci --prefer-offline --no-audit --no-fund
+          npm run sync-version
+          npx vite build
+
+      - name: Run unit tests for unread state & project recovery
+        working-directory: src-tauri
+        run: |
+          cargo test codex_local_project_recovery --lib
+          cargo test account_project_switch_identity_tests --lib
+
+      - name: Build release cockpit-tools.exe
+        run: |
+          cargo build --locked --release -p cockpit-tools --bin cockpit-tools
+
+      - name: Upload patched cockpit-tools.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: cockpit-tools-windows-exe
+          retention-days: 7
+          if-no-files-found: error
+          path: target/release/cockpit-tools.exe
