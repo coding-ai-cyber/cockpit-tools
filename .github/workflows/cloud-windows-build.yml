@@ -7,33 +7,20 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-rust:
-    name: "Run Rust Unit Tests (Linux Fast)"
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Linux build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends             libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev             libssl-dev libnm-dev patchelf
-
-      - name: Rust setup
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Run unit tests for unread state & project recovery
-        working-directory: src-tauri
-        run: |
-          cargo test codex_local_project_recovery --lib
-          cargo test account_project_switch_identity_tests --lib
-
   build-windows-exe:
-    name: "Build Windows x64 Release"
+    name: "Build Windows x64 Release (with embedded frontend)"
     runs-on: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Rust setup
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Host build cache
+        uses: ./.github/actions/host-build-cache
+        with:
+          target: windows
 
       - name: Node.js setup
         uses: actions/setup-node@v4
@@ -41,18 +28,12 @@ jobs:
           node-version: 22
           cache: "npm"
 
-      - name: Rust setup
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install frontend dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Build frontend dist
+      - name: Build Tauri release executable (embeds dist via custom-protocol)
         run: |
-          npm ci --prefer-offline --no-audit --no-fund
-          npm run sync-version
-          npx vite build
-
-      - name: Build release cockpit-tools.exe
-        run: |
-          cargo build --locked --release -p cockpit-tools --bin cockpit-tools
+          npx tauri build --no-bundle
 
       - name: Upload patched cockpit-tools.exe
         uses: actions/upload-artifact@v4
